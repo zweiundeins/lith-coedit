@@ -164,7 +164,7 @@ func (c *Commit) apply(tx *writer.Tx) (string, error) {
 	if err != nil {
 		return "This change no longer fits the " + k.cfg.Noun + ".", nil
 	}
-	if msg := k.check(head, next, c.Check); msg != "" {
+	if msg := k.check(tx, head, next, c.Check); msg != "" {
 		return msg, nil
 	}
 	raw, err := doc.MarshalSteps(applied)
@@ -178,8 +178,8 @@ func (c *Commit) apply(tx *writer.Tx) (string, error) {
 }
 
 // check runs the Kind's rules and the subject's own check.
-func (k *Kind) check(head, next doc.Doc, own func(head, next doc.Doc) string) string {
-	if err := k.cfg.Rules.Check(head, next); err != nil {
+func (k *Kind) check(tx *writer.Tx, head, next doc.Doc, own func(head, next doc.Doc) string) string {
+	if err := k.rulesIn(tx).Check(head, next); err != nil {
 		var re *doc.RuleError
 		if errors.As(err, &re) {
 			return re.Msg
@@ -237,7 +237,7 @@ func (k *Kind) CommitWhole(tx *writer.Tx, by tabs.By, id string, d doc.Doc, ref,
 	if err != nil {
 		return false, err
 	}
-	if msg := k.check(head, next, check); msg != "" {
+	if msg := k.check(tx, head, next, check); msg != "" {
 		return false, tabs.Refuse(field, msg)
 	}
 	raw, err := doc.MarshalSteps([]doc.Step{step})

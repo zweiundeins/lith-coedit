@@ -33,6 +33,7 @@ import (
 	"github.com/zweiundeins/tickit/internal/access"
 	"github.com/zweiundeins/tickit/internal/demo/seed"
 	"github.com/zweiundeins/tickit/internal/doc"
+	"github.com/zweiundeins/tickit/internal/images"
 )
 
 // Event is an event of a document stream.
@@ -167,7 +168,7 @@ type Config struct {
 	EditorTopic func(tab string) string
 	CaretsTopic func(id string) string
 	// Rules are the server's rules beyond the schema; Image is the
-	// library's when nil.
+	// library's when nil, and in a commit the uploaded images' too.
 	Rules doc.Rules
 	// OnCommit runs in the command of every commit, after its event:
 	// what the subject keeps beside the document follows its steps
@@ -179,6 +180,7 @@ type Config struct {
 // level with NewKind.
 type Kind struct {
 	cfg       Config
+	library   bool // cfg.Rules.Image is the library's
 	Stream    *events.Stream[string, Event]
 	Created   events.Type[string, Event, Created]
 	Committed events.Type[string, Event, Committed]
@@ -188,12 +190,14 @@ type Kind struct {
 
 // NewKind defines a Kind's stream and event types.
 func NewKind(cfg Config) *Kind {
-	if cfg.Rules.Image == nil {
+	library := cfg.Rules.Image == nil
+	if library {
 		cfg.Rules.Image = ImageExists
 	}
 	s := events.NewStream[string, Event](cfg.Name)
 	return &Kind{
 		cfg:       cfg,
+		library:   library,
 		Stream:    s,
 		Created:   events.Define(s, cfg.Name+".created", func(e Created) Event { return e }),
 		Committed: events.Define(s, cfg.Name+".committed", func(e Committed) Event { return e }),
@@ -215,6 +219,22 @@ func (k *Kind) CaretsTopic(id string) string  { return k.cfg.CaretsTopic(id) }
 
 // Rules are the Kind's rules beyond the schema.
 func (k *Kind) Rules() doc.Rules { return k.cfg.Rules }
+
+// rulesIn are the rules of a commit in tx, which take the images people
+// uploaded (FR-85) beside the library's.
+func (k *Kind) rulesIn(tx *writer.Tx) doc.Rules {
+	r := k.cfg.Rules
+	if k.library {
+		r.Image = func(id string) bool {
+			if ImageExists(id) {
+				return true
+			}
+			ok, _ := images.Exists(tx.Context(), tx, id)
+			return ok
+		}
+	}
+	return r
+}
 
 func (k *Kind) store() *events.Store { return k.cfg.Store() }
 
