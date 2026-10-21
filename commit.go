@@ -204,6 +204,9 @@ func (k *Kind) append(tx *writer.Tx, by tabs.By, id string, ds State, e Committe
 	if err := events.Execute(k.store(), tx, CommitDecider, k.Stream.ID(id), events.Exactly(ds.Version), e, m); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO collab_uncut (kind, id, at) VALUES (?, ?, ?)`, k.cfg.Name, id, m.At.UnixMilli()); err != nil {
+		return err
+	}
 	if k.cfg.OnCommit != nil {
 		if err := k.cfg.OnCommit(tx, id, applied, next); err != nil {
 			return err

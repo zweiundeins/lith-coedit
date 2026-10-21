@@ -26,3 +26,15 @@ func (k *Kind) Fold(tx *writer.Tx, since time.Time, limit int) (int64, error) {
 	return events.Compact(k.store(), tx, k.Snapshot, events.Retention{Since: since, Limit: cmp.Or(limit, FoldBatch)}, peekDecider,
 		func(s State) Snapshot { return Snapshot{Epoch: s.Epoch, Doc: Marshal(s.doc)} })
 }
+
+// Cut records that a version of the subject holds its document up to
+// version upto: collab_uncut (migration 087), which the subject's fold
+// reads for its bound, then has the first commit after it, if any.
+func (k *Kind) Cut(tx *writer.Tx, id string, upto int64) error {
+	if _, err := tx.Exec(`DELETE FROM collab_uncut WHERE kind = ? AND id = ?`, k.cfg.Name, id); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`INSERT INTO collab_uncut (kind, id, at) SELECT stream, stream_id, at FROM lith_events
+		WHERE stream = ? AND stream_id = ? AND version = ?`, k.cfg.Name, id, upto+1)
+	return err
+}
