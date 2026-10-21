@@ -204,6 +204,11 @@ func (k *Kind) append(tx *writer.Tx, by tabs.By, id string, ds State, e Committe
 	if err := events.Execute(k.store(), tx, CommitDecider, k.Stream.ID(id), events.Exactly(ds.Version), e, m); err != nil {
 		return err
 	}
+	if k.cfg.OnCommit != nil {
+		if err := k.cfg.OnCommit(tx, id, applied, next); err != nil {
+			return err
+		}
+	}
 	rec, key := commitRec{Ref: e.Ref, Client: e.Client, Base: e.Base, Steps: applied, Raw: e.Steps}, commitKey{k.cfg.Name, id, ds.Epoch, v}
 	tx.AfterCommit(func() { commits.put(key, rec) })
 	return nil
@@ -240,6 +245,31 @@ func (k *Kind) CommitWhole(tx *writer.Tx, by tabs.By, id string, d doc.Doc, ref,
 		return false, err
 	}
 	return true, k.append(tx, by, id, ds, Committed{Ref: ref, Base: ds.Version, Steps: raw}, []doc.Step{step}, next)
+}
+
+// StepsSince are the steps of a subject's commits after version base up
+// to the state's head, in a command: what a position made at base maps
+// through. ErrStale when base is newer than the head or the commits
+// after it were folded away.
+func (k *Kind) StepsSince(tx *writer.Tx, id string, s State, base int64) ([]doc.Step, error) {
+	if base > s.Version || base < 0 {
+		return nil, ErrStale
+	}
+	since, first, err := k.loadCommits(tx.Context(), tx, id, s.Epoch, base, s.Version, false)
+	if err != nil {
+		return nil, err
+	}
+	if base < s.Version && first != base+1 {
+		return nil, ErrStale
+	}
+	var out []doc.Step
+	for _, c := range since {
+		if c.Snapshot != nil {
+			return nil, ErrStale
+		}
+		out = append(out, c.Steps...)
+	}
+	return out, nil
 }
 
 // EditorsSince reports who committed to a subject's document after version

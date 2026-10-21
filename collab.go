@@ -169,6 +169,10 @@ type Config struct {
 	// Rules are the server's rules beyond the schema; Image is the
 	// library's when nil.
 	Rules doc.Rules
+	// OnCommit runs in the command of every commit, after its event:
+	// what the subject keeps beside the document follows its steps
+	// (a page's inline comments, FR-91). Optional.
+	OnCommit func(tx *writer.Tx, id string, steps []doc.Step, next doc.Doc) error
 }
 
 // Kind is a kind of co-edited document. Make one per subject at package
