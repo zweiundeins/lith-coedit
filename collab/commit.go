@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/zweiundeins/lith/events"
@@ -20,6 +21,21 @@ const (
 	Refused  Answer = 'r' // 422: a rule refused it; the editor's row says why
 	Readonly Answer = 'o' // 403: the actor may not edit the subject
 )
+
+// Status is the HTTP status a commit's route answers with.
+func (a Answer) Status() int {
+	switch a {
+	case Applied:
+		return http.StatusNoContent
+	case Stale:
+		return http.StatusConflict
+	case Refused:
+		return http.StatusUnprocessableEntity
+	case Readonly:
+		return http.StatusForbidden
+	}
+	return http.StatusInternalServerError
+}
 
 // Commit applies an editor's commit to a subject's document: it maps its
 // steps over the commits since Base (prosemirror.Rebase), checks the result

@@ -333,3 +333,11 @@ func TestParseCommit(t *testing.T) {
 		t.Errorf("a step type the server refuses: %v", err)
 	}
 }
+
+func TestAnswerStatus(t *testing.T) {
+	for a, want := range map[collab.Answer]int{collab.Applied: 204, collab.Stale: 409, collab.Refused: 422, collab.Readonly: 403, 'x': 500} {
+		if got := a.Status(); got != want {
+			t.Errorf("%c: %d, want %d", a, got, want)
+		}
+	}
+}
