@@ -190,7 +190,7 @@ await build({
 })
 ```
 
-The aliases of the ProseMirror packages matter where the lith-coedit checkout has a `node_modules` of its own: esbuild would take those next to the importing file, and two copies of prosemirror-model break `instanceof`. The app's `package.json` pins the ProseMirror versions of `editor/package.json`. With a `replace` directive to a local checkout, `go list` names that checkout. tickit's `editor/coedit.mjs` is a complete example.
+The aliases of the ProseMirror packages matter where the lith-coedit checkout has a `node_modules` of its own: esbuild would take those next to the importing file, and two copies of prosemirror-model break `instanceof`. The app's `package.json` pins the ProseMirror versions of `editor/package.json`. With a `replace` directive to a local checkout, `go list` names that checkout. tickit's `editor/lith-coedit.mjs` is a complete example.
 
 ### Testing an app's editor
 
