@@ -463,3 +463,45 @@ func TestFailedBatchCachesNothing(t *testing.T) {
 		t.Errorf("a committed commit: %c, cached %v", a, collab.Cached("notedoc", "n1", "e0", 2, "kept"))
 	}
 }
+
+// uncut is the subject's row of collab_uncut: the time of its oldest
+// change no version holds, and whether it has one.
+func (e *env) uncut(id string) (int64, bool) {
+	var at int64
+	err := e.db.R.QueryRow(`SELECT at FROM collab_uncut WHERE kind = 'notedoc' AND id = ?`, id).Scan(&at)
+	return at, err == nil
+}
+
+// A commit marks its subject; Cut, Release and Hold move the bound of the
+// fold as a version, a trash and a restore do.
+func TestMarkReleaseHold(t *testing.T) {
+	e := open(t)
+	createNote(t, e, "n1", "ab")
+	if _, ok := e.uncut("n1"); ok {
+		t.Fatal("a new document holds the fold back")
+	}
+	if a := e.commit(&collab.Commit{ID: "n1", Base: 1, Ref: "a", Steps: []byte(insert(2, "x"))}); a != collab.Applied {
+		t.Fatal(a)
+	}
+	first, ok := e.uncut("n1")
+	if !ok {
+		t.Fatal("a commit left no row")
+	}
+	e.must(func(tx *writer.Tx) error { return notes.Mark(tx, "n1", time.Now().Add(time.Hour)) })
+	if at, _ := e.uncut("n1"); at != first {
+		t.Errorf("Mark moved the oldest change: %d, was %d", at, first)
+	}
+	e.must(func(tx *writer.Tx) error { return notes.Release(tx, "n1") })
+	if _, ok := e.uncut("n1"); ok {
+		t.Error("a released subject holds the fold back")
+	}
+	e.must(func(tx *writer.Tx) error { return notes.Hold(tx, "n1", 1) })
+	if at, ok := e.uncut("n1"); !ok || at != first {
+		t.Errorf("Hold: %d %v, want the commit's %d", at, ok, first)
+	}
+	e.must(func(tx *writer.Tx) error { return notes.Release(tx, "n1") })
+	e.must(func(tx *writer.Tx) error { return notes.Hold(tx, "n1", 2) })
+	if _, ok := e.uncut("n1"); ok {
+		t.Error("Hold after the last version's commits holds the fold back")
+	}
+}

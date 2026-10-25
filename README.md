@@ -134,7 +134,7 @@ The head table is a projection (`Kind.Projector`, with a checkpoint of the docum
 
 ### Versions and the fold
 
-The app cuts versions (when the last editor leaves, after a minute without commits, every few minutes of editing, on "Save version") and records them as it likes, calling `Kind.Cut(tx, id, upto)` with the version a cut holds. A job calls `Kind.Fold(tx, since, limit)` with a time no later than the oldest `collab_uncut` row it may fold to, so no commit after a subject's last version is folded. While the commit cache holds the folded commits, an editor behind the fold still merges; past that its frame says `gap`.
+The app cuts versions (when the last editor leaves, after a minute without commits, every few minutes of editing, on "Save version") and records them as it likes, calling `Kind.Cut(tx, id, upto)` with the version a cut holds. A commit marks its subject (`Kind.Mark`); a subject that is gone (in a trash, deleted, hidden) should hold no fold back, since no version is cut for it: `Kind.Release` deletes its row, and `Kind.Hold(tx, id, upto)` puts back the oldest of its events after its last version when it returns. A job calls `Kind.Fold(tx, since, limit)` with a time no later than the oldest `collab_uncut` row it may fold to, so no commit after a subject's last version is folded. While the commit cache holds the folded commits, an editor behind the fold still merges; past that its frame says `gap`.
 
 ## The browser: editor/
 

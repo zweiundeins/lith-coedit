@@ -38,3 +38,26 @@ func (k *Kind) Cut(tx *writer.Tx, id string, upto int64) error {
 		WHERE stream = ? AND stream_id = ? AND version = ?`, k.cfg.Name, id, upto+1)
 	return err
 }
+
+// Mark records that the subject has a change no version holds yet, made
+// at at, unless an older one holds the fold back already.
+func (k *Kind) Mark(tx *writer.Tx, id string, at time.Time) error {
+	_, err := tx.Exec(`INSERT OR IGNORE INTO collab_uncut (kind, id, at) VALUES (?, ?, ?)`, k.cfg.Name, id, at.UnixMilli())
+	return err
+}
+
+// Release records that the subject is gone (trashed, hidden, deleted):
+// its commits that no version holds hold the fold back no more.
+func (k *Kind) Release(tx *writer.Tx, id string) error {
+	_, err := tx.Exec(`DELETE FROM collab_uncut WHERE kind = ? AND id = ?`, k.cfg.Name, id)
+	return err
+}
+
+// Hold undoes Release for a subject that is back, whose last version
+// holds its document up to version upto: the oldest of its events after
+// upto that the fold left, if any, holds the fold back again.
+func (k *Kind) Hold(tx *writer.Tx, id string, upto int64) error {
+	_, err := tx.Exec(`INSERT OR IGNORE INTO collab_uncut (kind, id, at) SELECT stream, stream_id, at FROM lith_events
+		WHERE stream = ? AND stream_id = ? AND version > ? ORDER BY version LIMIT 1`, k.cfg.Name, id, upto)
+	return err
+}
