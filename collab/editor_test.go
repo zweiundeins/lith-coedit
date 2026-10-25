@@ -4,8 +4,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/zweiundeins/prosemirror-go"
 )
 
 // The editor's fake writer (editor/test/authority/rebase.js) and the
@@ -37,5 +40,27 @@ func TestEditorRebaseIsTheOracles(t *testing.T) {
 	}
 	if code(ed) != code(oracle) {
 		t.Fatal("editor/test/authority/rebase.js differs from prosemirror-go's testdata/oracle/src/rebase.js")
+	}
+}
+
+// The editor's randomId and prosemirror-go's NewID write ids alike, so a
+// node the server makes and one an editor makes look the same.
+func TestEditorIDsAreNewIDs(t *testing.T) {
+	cmd := exec.Command("node", "--input-type=module", "-e",
+		`import { randomId } from './src/ids.js'; for (let i = 0; i < 200; i++) console.log(randomId())`)
+	cmd.Dir = "../editor"
+	out, err := cmd.Output()
+	if err != nil {
+		t.Skip("node with editor/node_modules: ", err)
+	}
+	format := regexp.MustCompile(`^[0-9a-z]{16}$`)
+	ids := strings.Fields(string(out))
+	if len(ids) != 200 {
+		t.Fatalf("%d ids", len(ids))
+	}
+	for _, id := range append(ids, prosemirror.NewID()) {
+		if !format.MatchString(id) {
+			t.Errorf("id %q", id)
+		}
 	}
 }
