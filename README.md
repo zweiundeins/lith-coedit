@@ -82,7 +82,7 @@ What the app provides:
 | `Config.OnCommit(tx, id, steps, next)` | what follows each commit's steps in its command, such as inline comments' anchors (`prosemirror.MapRange`) |
 | `Commit.Meta` | the commit's event metadata, its `Actor` who commits |
 
-The rest: `Kind.Create`, `Commit` (`Validate` parses outside the writer; `ApplyResult` answers one byte, an `Answer`), `Kind.CommitWhole` (a whole document as one step on the head, for a restore or an import; a refusal is a `*writer.Refusal`), `StepsSince`, `EditorsSince`, `Open`, `Presence`, `Close`, `Editor`, `Editors`, `Pause` and `Paused` (an editor the app refused before the writer, shown read-only with the reason), `SweepEditors`, `Head` and `StateDoc` (through the caches), `Batches`, `Projector` (the head table, with a hook for the app's own tables), `Cut` and `Fold`, `Client`, `ParseCommit` (500 steps in 256 KB at most), `CacheStats`, `ResetCaches`. The document cache (96 MB) and the commit cache (16 MB) are shared by every Kind of the process.
+The rest: `Kind.Create`, `Commit` (`Validate` parses outside the writer; `ApplyResult` answers one byte, an `Answer`, whose `Status()` is the route's HTTP status), `Kind.CommitWhole` (a whole document as one step on the head, for a restore or an import; a refusal is a `*writer.Refusal`), `StepsSince`, `EditorsSince`, `Open`, `Presence`, `Close`, `Editor`, `Editors`, `Pause` and `Paused` (an editor the app refused before the writer, shown read-only with the reason), `SweepEditors`, `Head` and `StateDoc` (through the caches), `Batches`, `Projector` (the head table, with a hook for the app's own tables), `Cut` and `Fold`, `Client`, `ParseCommit` (500 steps in 256 KB at most), `CacheStats`, `ResetCaches`. The document cache (96 MB) and the commit cache (16 MB) are shared by every Kind of the process.
 
 ### Tables
 
@@ -145,6 +145,7 @@ The app cuts versions (when the last editor leaves, after a minute without commi
 | `carets.js` | `caretPlugin`, `Carets` (remote carets and selections, mapped from the version they were sent at) |
 | `comments.js` | `commentPlugin`, `drawComments`, `placeComments`, `commentRange` (a selected node with a stable id as `{v, node}`) |
 | `ids.js` | `idPlugin({ids, make})`: gives nodes of the types in `ids` (`{photo: 'id'}`, as prosemirror-go's `IDs`) an id when this editor makes them, and a new one to a copy (a paste, a split); `findNode`, `randomId` |
+| `schema.js` | `schemaSpec(json, extra)`: the schema JSON prosemirror-go reads (ordered arrays of nodes and marks) as the spec `new Schema` takes, with the browser's `toDOM` and `parseDOM` per name in `extra` |
 | `index.js` | all of the above |
 
 The app's editor makes the view with `collab({version: base})`, `caretPlugin()` and `commentPlugin()` among its plugins (and `idPlugin` when its schema has node types with stable ids, which the server's `Rules.IDs` checks), then a session:
@@ -192,7 +193,7 @@ The aliases of the ProseMirror packages matter where the coedit checkout has a `
 
 ### Testing an app's editor
 
-`editor/test/authority/` holds a fake writer in JavaScript: `rebase.js` is the rebase prosemirror-go's oracle runs (a Go test compares them) and `authority.js` keeps versions, tabs' rows, refusals, folds and resets and renders each tab's frame, with the app's own attributes (`attrs`). An app's browser harness runs it in a SharedWorker, as tickit's does.
+An app that tests its editor in Node without a bundler imports ProseMirror by file URL from coedit's own `editor/node_modules` (`new URL('node_modules/prosemirror-state/dist/index.js', coeditEditorURL)`), so that the test and coedit's modules share one copy of each package. `editor/test/authority/` holds a fake writer in JavaScript: `rebase.js` is the rebase prosemirror-go's oracle runs (a Go test compares them) and `authority.js` keeps versions, tabs' rows, refusals, folds and resets and renders each tab's frame, with the app's own attributes (`attrs`). An app's browser harness runs it in a SharedWorker, as tickit's does.
 
 ## Tests
 
