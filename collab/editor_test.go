@@ -1,6 +1,7 @@
 package collab_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,13 +16,23 @@ import (
 // rebase prosemirror-go's oracle runs alike, comments and layout aside:
 // the browser tests then test the rebase the Go writer runs.
 func TestEditorRebaseIsTheOracles(t *testing.T) {
-	dir, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/zweiundeins/prosemirror-go").Output()
+	// The oracle is a module of its own, left out of prosemirror-go's: fetch it at
+	// the version go.mod requires, without making it a requirement.
+	version, err := exec.Command("go", "list", "-m", "-f", "{{.Version}}", "github.com/zweiundeins/prosemirror-go").Output()
 	if err != nil {
-		t.Skip("go list: ", err)
+		t.Fatal("go list: ", err)
 	}
-	oracle, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(dir)), "oracle/src/rebase.js"))
+	out, err := exec.Command("go", "mod", "download", "-json", "github.com/zweiundeins/prosemirror-go/oracle@"+strings.TrimSpace(string(version))).Output()
 	if err != nil {
-		t.Skip("prosemirror-go has no oracle sources here: ", err)
+		t.Skip("the oracle module cannot be downloaded here: ", err)
+	}
+	var mod struct{ Dir string }
+	if err := json.Unmarshal(out, &mod); err != nil || mod.Dir == "" {
+		t.Fatalf("go mod download: %v %s", err, out)
+	}
+	oracle, err := os.ReadFile(filepath.Join(mod.Dir, "src/rebase.js"))
+	if err != nil {
+		t.Fatal(err)
 	}
 	ed, err := os.ReadFile("../editor/test/authority/rebase.js")
 	if err != nil {

@@ -18,6 +18,8 @@ github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
 github.com/zweiundeins/lith v0.5.1 h1:Utcw9GTv47XbKohEkC3KrN/i69X1Y09qne7Nsd6hyDc=
 github.com/zweiundeins/lith v0.5.1/go.mod h1:R32P58Ms6u7XOaFTYZDC1H7gpfPqrOu4/le+HES/HAk=
+github.com/zweiundeins/prosemirror-go v0.1.0 h1:dQz1yyJtRQ0yIlU4I/l7qQOybPZl3hyA4LH2udHhe9k=
+github.com/zweiundeins/prosemirror-go v0.1.0/go.mod h1:N6K/D46qKgP5yJfAr+h98Z7ucssslKlMArQF9oDVcgU=
 golang.org/x/mod v0.41.0 h1:qJmnOUb4YB+FsEuM3HcWucdZASCPGhsX6uljO6pog0c=
 golang.org/x/mod v0.41.0/go.mod h1:Ek9pY8RKWXwsWvd3rQiHYtMqkjSUV+s1Rj7j4H5Ur6o=
 golang.org/x/sync v0.23.0 h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=

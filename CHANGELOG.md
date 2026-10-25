@@ -2,7 +2,7 @@
 
 Until 1.0, a minor release may change the API; its entry says what to change in an app.
 
-## Unreleased
+## v0.1.0 (2026-10-25)
 
 The first release: tickit's `internal/collab` and the shared parts of its editor, extracted as a module of its own on prosemirror-go and lith v0.5.1. To move an app from `internal/collab`:
 
