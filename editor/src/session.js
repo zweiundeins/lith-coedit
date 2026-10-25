@@ -32,13 +32,16 @@ export class Session {
 	// view: the EditorView; schema: its schema; read(): the host's
 	// attributes {epoch, client, tab, state, readonly, batches, carets,
 	// comments, refusal}; emit(type, detail). carets and comments are the
-	// options of Carets and drawComments (class names).
-	constructor({ view, schema, read, emit, carets = {}, comments = {}, maxSteps = 20, presenceMs = 100, confirmWait = 3000, backoff = [1000, 2000, 4000, 8000, 15000] }) {
+	// options of Carets and drawComments (class names); ids maps the node
+	// types with stable ids to their attribute (ids.js), for comments on
+	// nodes.
+	constructor({ view, schema, read, emit, carets = {}, comments = {}, ids = {}, maxSteps = 20, presenceMs = 100, confirmWait = 3000, backoff = [1000, 2000, 4000, 8000, 15000] }) {
 		this.view = view
 		this.schema = schema
 		this.read = read
 		this.emit = emit
-		this.commentOpts = comments
+		this.ids = ids
+		this.commentOpts = { ...comments, ids }
 		this.maxSteps = maxSteps
 		this.presenceMs = presenceMs
 		this.confirmWait = confirmWait
@@ -271,8 +274,31 @@ export class Session {
 	// commentRange is the selection as an inline comment's range: at the
 	// confirmed version, with the epoch; null without selected text.
 	commentRange() {
-		const r = commentRange(this.view.state)
+		const r = commentRange(this.view.state, this.ids)
 		return r && { ...r, epoch: this.epoch }
+	}
+
+	// insertNode puts a node of the type at pos, or in place of the
+	// selection, as a local edit: it goes out in the next commit, with an
+	// id from idPlugin when its type has one. It reports whether it could.
+	insertNode(type, attrs, pos) {
+		if (!this.editable()) return false
+		let node
+		try {
+			node = this.schema.nodes[type].create(attrs)
+			node.check()
+		} catch {
+			return false
+		}
+		const { state } = this.view
+		let tr
+		try {
+			tr = pos == null ? state.tr.replaceSelectionWith(node) : state.tr.insert(pos, node)
+		} catch {
+			return false
+		}
+		this.view.dispatch(tr.scrollIntoView())
+		return true
 	}
 
 	destroy() {

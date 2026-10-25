@@ -47,7 +47,7 @@ Extracted from [tickit](https://github.com/zweiundeins/tickit) (`internal/collab
 | `head` | The version of the newest commit. |
 | `batches` | `[{v, ref, client, steps}]`: every commit after the tab's acknowledged version, as the writer applied it, at most 500 (`Kind.Batches`). The editor applies them in order and waits at a gap for the next frame. |
 | `carets` | `[{id, name, hue, v, anchor, head, idle}]` at version `v`; `hue` 0 to 15. One shared view per subject renders them for every editor. |
-| `comments` | Optional: `{v, list: [{id, from, to}]}`, ranges of inline comments at version `v`, drawn as highlights and mapped like carets. |
+| `comments` | Optional: `{v, list: [{id, from, to} \| {id, node}]}`: inline comments on a range of text at version `v`, drawn as highlights and mapped like carets, or on a node by its stable id (prosemirror-go's `IDs`), drawn on the node's element; a node anchor needs no mapping and is gone with the node. |
 | `state` | `ok`, `gap` (the tab's version was folded away), `reset` (another epoch, or the tab's row is gone), `gone` (the subject was removed) or `readonly`. |
 | `refusal` | `{"ref", "message"}` for a commit the writer refused (the editor takes its steps out), or plain text to show. Each ref is handled once, so the row may keep it. |
 | `readonly` | Present: read-only. The editor keeps applying `batches`, sends nothing and keeps the person's unsaved text. |
@@ -143,10 +143,11 @@ The app cuts versions (when the last editor leaves, after a minute without commi
 | `session.js` | `Session`: the protocol of one editor, on the app's ProseMirror view |
 | `collab.js` | the `collab` plugin (unconfirmed steps with sequence numbers), `makeCommit`, `batchTransaction`, `receiveTransaction`, `collabState`, `getVersion`, `REMOTE` (the meta of the module's own transactions) |
 | `carets.js` | `caretPlugin`, `Carets` (remote carets and selections, mapped from the version they were sent at) |
-| `comments.js` | `commentPlugin`, `drawComments`, `placeComments`, `commentRange` |
+| `comments.js` | `commentPlugin`, `drawComments`, `placeComments`, `commentRange` (a selected node with a stable id as `{v, node}`) |
+| `ids.js` | `idPlugin({ids, make})`: gives nodes of the types in `ids` (`{photo: 'id'}`, as prosemirror-go's `IDs`) an id when this editor makes them, and a new one to a copy (a paste, a split); `findNode`, `randomId` |
 | `index.js` | all of the above |
 
-The app's editor makes the view with `collab({version: base})`, `caretPlugin()` and `commentPlugin()` among its plugins, then a session:
+The app's editor makes the view with `collab({version: base})`, `caretPlugin()` and `commentPlugin()` among its plugins (and `idPlugin` when its schema has node types with stable ids, which the server's `Rules.IDs` checks), then a session:
 
 ```js
 import { Session, collab, caretPlugin, commentPlugin } from 'coedit'
@@ -159,12 +160,13 @@ const session = new Session({
 	},
 	carets: { prefix: 'my' },          // .my-caret, .my-caret__tag, .my-remote-sel
 	comments: { className: 'highlight', attr: 'data-highlight' },
+	ids: { photo: 'id' },              // node types with stable ids, for comments on nodes
 })
 // in dispatchTransaction, after view.updateState: session.transaction(tr)
 // when the host's attributes change (a frame): session.sync()
 ```
 
-`posted(ref, ok, status)` tells the session that the post of a commit settled: `ok` false is a network failure, and the commit goes out again after 1, 2, 4, 8 and 15 s; with a `status`, 429 and 5xx back off too, and 409 and 422 wait for the frame that says why. An answered commit that no frame confirms within 3 s goes out again, with the same ref. `editable()`, `unsaved()`, `stopped`, `commentRange()` and `stats` are for the app's toolbar, status line and tests. `emit` events: `commit {epoch, base, ref, steps, tab?}`, `presence {epoch, ack, v, anchor, head, seq, tab?}`, `ack {epoch, ack}`, `refused {ref, message, dropped}`, `stopped {state, unsaved}`, `resumed {}` and `throttled {}`.
+`posted(ref, ok, status)` tells the session that the post of a commit settled: `ok` false is a network failure, and the commit goes out again after 1, 2, 4, 8 and 15 s; with a `status`, 429 and 5xx back off too, and 409 and 422 wait for the frame that says why. An answered commit that no frame confirms within 3 s goes out again, with the same ref. `insertNode(type, attrs, pos?)` puts a node at `pos` or in place of the selection as a local edit, so it goes out with the next commit (a photo dragged in from a side panel); with `idPlugin` among the plugins it gets its id. `editable()`, `unsaved()`, `stopped`, `commentRange()` and `stats` are for the app's toolbar, status line and tests. `emit` events: `commit {epoch, base, ref, steps, tab?}`, `presence {epoch, ack, v, anchor, head, seq, tab?}`, `ack {epoch, ack}`, `refused {ref, message, dropped}`, `stopped {state, unsaved}`, `resumed {}` and `throttled {}`.
 
 ### Using it from an app
 

@@ -9,6 +9,7 @@ import { collab } from '../../src/collab.js'
 import { caretPlugin } from '../../src/carets.js'
 import { commentPlugin } from '../../src/comments.js'
 import { Session } from '../../src/session.js'
+import { idPlugin } from '../../src/ids.js'
 import { Authority } from '../authority/authority.js'
 
 const seedDoc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello world' }] }] }
@@ -16,13 +17,13 @@ const tick = (ms = 5) => new Promise((r) => setTimeout(r, ms))
 
 // A tab: a fake EditorView, the host's attributes, and the page's wiring.
 class Tab {
-	constructor(auth, tab) {
+	constructor(auth, tab, plugins = []) {
 		this.auth = auth
 		this.tab = tab
 		this.events = []
 		const o = auth.open(tab)
 		this.attrs = { epoch: o.epoch, client: o.client, tab, state: 'ok', batches: '[]', carets: '[]', comments: '', refusal: '' }
-		const state = EditorState.create({ doc: schema.nodeFromJSON(o.doc), plugins: [collab({ version: o.base }), caretPlugin(), commentPlugin()] })
+		const state = EditorState.create({ doc: schema.nodeFromJSON(o.doc), plugins: [collab({ version: o.base }), caretPlugin(), commentPlugin(), ...plugins] })
 		const self = this
 		this.view = {
 			state,
@@ -132,4 +133,16 @@ test('readonly applies frames, sends nothing, and resumes', async () => {
 	assert.equal(a.session.unsaved(), 0)
 	assert.ok(auth.doc.textContent.includes('mine'))
 	for (const t of [a, b]) t.session.destroy()
+})
+
+test('insertNode goes out in the normal commit, with its id', async () => {
+	const auth = new Authority({ schema, doc: seedDoc })
+	const a = new Tab(auth, 'a', [idPlugin({ ids: { photo: 'id' }, make: () => 'ph1' })])
+	assert.equal(a.session.insertNode('photo', { src: 'x.jpg' }, 0), true)
+	assert.equal(a.session.insertNode('nope', {}), false)
+	await settle([a])
+	assert.equal(auth.doc.firstChild.type.name, 'photo')
+	assert.equal(auth.doc.firstChild.attrs.id, 'ph1')
+	assert.equal(a.session.unsaved(), 0)
+	a.session.destroy()
 })

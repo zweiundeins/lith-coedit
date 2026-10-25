@@ -3,4 +3,5 @@
 export * from './collab.js'
 export * from './carets.js'
 export * from './comments.js'
+export * from './ids.js'
 export * from './session.js'
