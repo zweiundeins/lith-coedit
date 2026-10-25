@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "description": "The shared JavaScript of coedit's editors: the commit protocol, carets and inline-comment anchoring on ProseMirror. Apps bundle src/ with their own editor (README).",
+  "main": "src/index.js",
   "license": "MIT",
   "scripts": {
     "test": "node --test test/unit/*.test.js"
