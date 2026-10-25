@@ -177,12 +177,16 @@ import { join } from 'node:path'
 const coedit = execFileSync('go', ['list', '-m', '-f', '{{.Dir}}', 'github.com/zweiundeins/coedit'], { encoding: 'utf8' }).trim()
 await build({
 	entryPoints: ['src/editor.js'], bundle: true, format: 'esm',
-	alias: { coedit: join(coedit, 'editor/src/index.js') },
+	alias: {
+		coedit: join(coedit, 'editor'),                      // 'coedit' is src/index.js, 'coedit/test/...' the fake writer
+		'prosemirror-model': join(here, 'node_modules/prosemirror-model'),
+		// the same for prosemirror-state, -transform and -view
+	},
 	nodePaths: [join(here, 'node_modules')],
 })
 ```
 
-The app's `package.json` pins the ProseMirror versions of `editor/package.json`. With a `replace` directive to a local checkout, `go list` names that checkout.
+The aliases of the ProseMirror packages matter where the coedit checkout has a `node_modules` of its own: esbuild would take those next to the importing file, and two copies of prosemirror-model break `instanceof`. The app's `package.json` pins the ProseMirror versions of `editor/package.json`. With a `replace` directive to a local checkout, `go list` names that checkout. tickit's `editor/coedit.mjs` is a complete example.
 
 ### Testing an app's editor
 
