@@ -5,7 +5,7 @@
 // decorations map through every transaction, so a caret keeps its place in
 // the text while people type around it.
 //
-// DOM, with the class prefix p of the Carets options ('coedit' by default):
+// DOM, with the class prefix p of the Carets options ('coedit' by default; tickit passes 'tk'):
 //   <span class="p-caret" data-hue="7" aria-hidden="true"><span class="p-caret__tag">Sunny Otter</span></span>
 //   .p-caret--tag   while the name shows: 3 s after the caret moved, or near our caret
 //   .p-caret--idle  the person has not moved for 30 s (no name, even on hover)

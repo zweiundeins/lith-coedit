@@ -1,4 +1,4 @@
-module github.com/zweiundeins/coedit
+module github.com/zweiundeins/lith-coedit
 
 go 1.27.3
 

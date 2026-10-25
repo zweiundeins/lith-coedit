@@ -1,4 +1,4 @@
-# coedit
+# lith-coedit
 
 Co-editing of ProseMirror documents for [lith](https://github.com/zweiundeins/lith) apps: several people edit one document at once, the server orders every edit and keeps the document, and no CRDT is involved. Two parts:
 
@@ -151,7 +151,7 @@ The app cuts versions (when the last editor leaves, after a minute without commi
 The app's editor makes the view with `collab({version: base})`, `caretPlugin()` and `commentPlugin()` among its plugins (and `idPlugin` when its schema has node types with stable ids, which the server's `Rules.IDs` checks), then a session:
 
 ```js
-import { Session, collab, caretPlugin, commentPlugin } from 'coedit'
+import { Session, collab, caretPlugin, commentPlugin } from 'lith-coedit'
 
 const session = new Session({
 	view, schema,
@@ -177,11 +177,12 @@ The modules are plain ES modules that import `prosemirror-model`, `-state`, `-tr
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
-const coedit = execFileSync('go', ['list', '-m', '-f', '{{.Dir}}', 'github.com/zweiundeins/coedit'], { encoding: 'utf8' }).trim()
+const dir = execFileSync('go', ['list', '-m', '-f', '{{.Dir}}', 'github.com/zweiundeins/lith-coedit'], { encoding: 'utf8' }).trim()
+if (!dir) throw new Error("lith-coedit is not downloaded: run go mod download github.com/zweiundeins/lith-coedit")
 await build({
 	entryPoints: ['src/editor.js'], bundle: true, format: 'esm',
 	alias: {
-		coedit: join(coedit, 'editor'),                      // 'coedit' is src/index.js, 'coedit/test/...' the fake writer
+		'lith-coedit': join(dir, 'editor'), // 'lith-coedit' is src/index.js, 'lith-coedit/test/...' the fake writer
 		'prosemirror-model': join(here, 'node_modules/prosemirror-model'),
 		// the same for prosemirror-state, -transform and -view
 	},
@@ -189,11 +190,11 @@ await build({
 })
 ```
 
-The aliases of the ProseMirror packages matter where the coedit checkout has a `node_modules` of its own: esbuild would take those next to the importing file, and two copies of prosemirror-model break `instanceof`. The app's `package.json` pins the ProseMirror versions of `editor/package.json`. With a `replace` directive to a local checkout, `go list` names that checkout. tickit's `editor/coedit.mjs` is a complete example.
+The aliases of the ProseMirror packages matter where the lith-coedit checkout has a `node_modules` of its own: esbuild would take those next to the importing file, and two copies of prosemirror-model break `instanceof`. The app's `package.json` pins the ProseMirror versions of `editor/package.json`. With a `replace` directive to a local checkout, `go list` names that checkout. tickit's `editor/coedit.mjs` is a complete example.
 
 ### Testing an app's editor
 
-An app that tests its editor in Node without a bundler imports ProseMirror by file URL from coedit's own `editor/node_modules` (`new URL('node_modules/prosemirror-state/dist/index.js', coeditEditorURL)`), so that the test and coedit's modules share one copy of each package. `editor/test/authority/` holds a fake writer in JavaScript: `rebase.js` is the rebase prosemirror-go's oracle runs (a Go test compares them) and `authority.js` keeps versions, tabs' rows, refusals, folds and resets and renders each tab's frame, with the app's own attributes (`attrs`). An app's browser harness runs it in a SharedWorker, as tickit's does.
+An app that tests its editor in Node without a bundler imports ProseMirror by file URL from lith-coedit's own `editor/node_modules` (`new URL('node_modules/prosemirror-state/dist/index.js', coeditEditorURL)`), so that the test and lith-coedit's modules share one copy of each package. `editor/test/authority/` holds a fake writer in JavaScript: `rebase.js` is the rebase prosemirror-go's oracle runs (a Go test compares them) and `authority.js` keeps versions, tabs' rows, refusals, folds and resets and renders each tab's frame, with the app's own attributes (`attrs`). An app's browser harness runs it in a SharedWorker, as tickit's does.
 
 ## Tests
 

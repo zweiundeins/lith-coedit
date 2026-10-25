@@ -1,5 +1,5 @@
 // Everything the shared editor modules export, for an app that imports one
-// name ('coedit').
+// name ('lith-coedit').
 export * from './collab.js'
 export * from './carets.js'
 export * from './comments.js'

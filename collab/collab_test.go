@@ -16,7 +16,7 @@ import (
 	"github.com/zweiundeins/lith/writer"
 	"github.com/zweiundeins/prosemirror-go"
 
-	"github.com/zweiundeins/coedit/collab"
+	"github.com/zweiundeins/lith-coedit/collab"
 )
 
 var schema = prosemirror.MustSchema([]byte(`{"nodes": [

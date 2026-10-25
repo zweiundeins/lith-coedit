@@ -1,8 +1,8 @@
 {
-  "name": "coedit-editor",
+  "name": "lith-coedit-editor",
   "private": true,
   "type": "module",
-  "description": "The shared JavaScript of coedit's editors: the commit protocol, carets and inline-comment anchoring on ProseMirror. Apps bundle src/ with their own editor (README).",
+  "description": "The shared JavaScript of lith-coedit's editors: the commit protocol, carets and inline-comment anchoring on ProseMirror. Apps bundle src/ with their own editor (README).",
   "main": "src/index.js",
   "license": "MIT",
   "scripts": {

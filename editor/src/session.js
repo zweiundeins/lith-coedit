@@ -137,12 +137,12 @@ export class Session {
 			try {
 				r = batchTransaction(this.view.state, this.schema, b, this.inflight ? { ref: this.inflight.detail.ref, last: this.inflight.last } : null)
 			} catch (e) {
-				console.error('coedit: a commit from the server does not parse', b, e)
+				console.error('lith-coedit: a commit from the server does not parse', b, e)
 				this.stop('diverged')
 				return false
 			}
 			if (!r.tr) {
-				console.error('coedit: a commit from the server does not apply', b)
+				console.error('lith-coedit: a commit from the server does not apply', b)
 				this.stop('diverged')
 				return false
 			}
@@ -151,7 +151,7 @@ export class Session {
 				this.inflight = null
 				if (r.reconciled) {
 					this.stats.resyncs++
-					console.warn('coedit: the server applied commit %s differently; the editor took the server\'s steps', b.ref)
+					console.warn('lith-coedit: the server applied commit %s differently; the editor took the server\'s steps', b.ref)
 				}
 			} else this.stats.received++
 			this.carets.confirmed(b.v, r.steps)
