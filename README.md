@@ -194,7 +194,7 @@ The aliases of the ProseMirror packages matter where the lith-coedit checkout ha
 
 ### Testing an app's editor
 
-An app that tests its editor in Node without a bundler imports ProseMirror by file URL from lith-coedit's own `editor/node_modules` (`new URL('node_modules/prosemirror-state/dist/index.js', coeditEditorURL)`), so that the test and lith-coedit's modules share one copy of each package. `editor/test/authority/` holds a fake writer in JavaScript: `rebase.js` is the rebase prosemirror-go's oracle runs (a Go test compares them) and `authority.js` keeps versions, tabs' rows, refusals, folds and resets and renders each tab's frame, with the app's own attributes (`attrs`). An app's browser harness runs it in a SharedWorker, as tickit's does.
+An app that tests its editor in Node bundles the test the way it bundles the editor: the same `lith-coedit` alias to the module's directory and the same ProseMirror aliases to its own `node_modules`, so that the test and lith-coedit's modules share one copy of each package. The module in Go's module cache has no `node_modules`; importing ProseMirror by file URL from lith-coedit's `editor/node_modules` works only in a checkout of lith-coedit itself, which is how its own tests run. `editor/test/authority/` holds a fake writer in JavaScript: `rebase.js` is the rebase prosemirror-go's oracle runs (a Go test compares them) and `authority.js` keeps versions, tabs' rows, refusals, folds and resets and renders each tab's frame, with the app's own attributes (`attrs`). An app's browser harness runs it in a SharedWorker, as tickit's does.
 
 ## Tests
 
