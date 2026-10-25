@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/zweiundeins/tickit/internal/doc"
+	"github.com/zweiundeins/prosemirror-go"
 )
 
 // lru is a cache bounded by the bytes of its values, the least recently
@@ -69,8 +69,7 @@ func (c *lru[K, V]) put(k K, v V) {
 // docKey names one immutable document: a subject's of a kind at a
 // version of an epoch, with the ref of the commit that made it. A commit
 // that a failed batch took back made a document under its own ref, which
-// no committed version names, so the cache never hands it out
-// (docs/editor.md).
+// no committed version names, so the cache never hands it out.
 type docKey struct {
 	kind, id, epoch string
 	version         int64
@@ -88,20 +87,20 @@ type commitKey struct {
 type commitRec struct {
 	Ref, Client string
 	Base        int64
-	Steps       []doc.Step
+	Steps       []prosemirror.Step
 	Raw         []byte // the steps' JSON
-	Snapshot    doc.Doc
+	Snapshot    prosemirror.Doc
 }
 
 // Cache sizes: the shared documents of the writer, the views and the jobs
-// (docs/editor.md), and the commits since a recent base, of every Kind.
+// (README), and the commits since a recent base, of every Kind.
 const (
 	DocCacheBytes    = 96 << 20
 	CommitCacheBytes = 16 << 20
 )
 
 var (
-	docs    = newLRU[docKey, doc.Doc](DocCacheBytes, func(d doc.Doc) int64 { return 3*int64(d.JSONLen()) + 512 })
+	docs    = newLRU[docKey, prosemirror.Doc](DocCacheBytes, func(d prosemirror.Doc) int64 { return 3*int64(d.JSONLen()) + 512 })
 	commits = newLRU[commitKey, commitRec](CommitCacheBytes, func(c commitRec) int64 { return 2*int64(len(c.Raw)) + 256 })
 )
 

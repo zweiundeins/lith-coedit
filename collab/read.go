@@ -8,7 +8,7 @@ import (
 	"github.com/zweiundeins/lith/events"
 	"github.com/zweiundeins/lith/sqlite"
 
-	"github.com/zweiundeins/tickit/internal/doc"
+	"github.com/zweiundeins/prosemirror-go"
 )
 
 // loadCommits reads a subject's commits after version after up to upto,
@@ -45,19 +45,19 @@ func (k *Kind) loadCommits(ctx context.Context, q sqlite.Querier, id, epoch stri
 		var c commitRec
 		switch e := r.Data.(type) {
 		case Committed:
-			steps, err := doc.ParseSteps(e.Steps)
+			steps, err := k.cfg.Schema.ParseSteps(e.Steps)
 			if err != nil {
 				return nil, 0, fmt.Errorf("collab: %s %s version %d: %w", k.cfg.Name, id, r.Version, err)
 			}
 			c = commitRec{Ref: e.Ref, Client: e.Client, Base: e.Base, Steps: steps, Raw: e.Steps}
 		case Snapshot:
-			d, err := doc.ParseDoc(e.Doc)
+			d, err := k.cfg.Schema.ParseDoc(e.Doc)
 			if err != nil {
 				return nil, 0, err
 			}
 			c = commitRec{Snapshot: d}
 		case Created:
-			d, err := doc.ParseDoc(e.Doc)
+			d, err := k.cfg.Schema.ParseDoc(e.Doc)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -74,7 +74,7 @@ func (k *Kind) loadCommits(ctx context.Context, q sqlite.Querier, id, epoch stri
 // docAt returns a subject's document at version, whose last commit has
 // ref, through the cache: from the cache, or from the head table's
 // checkpoint and the commits since.
-func (k *Kind) docAt(ctx context.Context, q sqlite.Querier, id, epoch string, version int64, ref string, fill bool) (doc.Doc, error) {
+func (k *Kind) docAt(ctx context.Context, q sqlite.Querier, id, epoch string, version int64, ref string, fill bool) (prosemirror.Doc, error) {
 	if d, ok := docs.get(docKey{k.cfg.Name, id, epoch, version, ref}); ok {
 		return d, nil
 	}
@@ -87,7 +87,7 @@ func (k *Kind) docAt(ctx context.Context, q sqlite.Querier, id, epoch string, ve
 	if rowEpoch != epoch || checkpoint > version {
 		return nil, ErrStale
 	}
-	d, err := doc.ParseDoc([]byte(raw))
+	d, err := k.cfg.Schema.ParseDoc([]byte(raw))
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (k *Kind) docAt(ctx context.Context, q sqlite.Querier, id, epoch string, ve
 				d = c.Snapshot
 				continue
 			}
-			if d, err = doc.Apply(d, c.Steps); err != nil {
+			if d, err = prosemirror.Apply(d, c.Steps); err != nil {
 				return nil, err
 			}
 		}
@@ -112,7 +112,7 @@ func (k *Kind) docAt(ctx context.Context, q sqlite.Querier, id, epoch string, ve
 
 // StateDoc is the document at a state's head, in a command (it fills no
 // cache with what the command's batch could still take back).
-func (k *Kind) StateDoc(ctx context.Context, q sqlite.Querier, id string, s State) (doc.Doc, error) {
+func (k *Kind) StateDoc(ctx context.Context, q sqlite.Querier, id string, s State) (prosemirror.Doc, error) {
 	return k.docAt(ctx, q, id, s.Epoch, s.Version, s.Ref, false)
 }
 
@@ -123,7 +123,7 @@ type Head struct {
 	Epoch   string
 	Version int64
 	Ref     string
-	Doc     doc.Doc
+	Doc     prosemirror.Doc
 	LastAt  int64
 }
 
@@ -138,7 +138,7 @@ func (k *Kind) Head(ctx context.Context, q sqlite.Querier, id string) (Head, err
 	return h, err
 }
 
-// Batch is a commit as an editor's frame carries it (docs/editor.md).
+// Batch is a commit as an editor's frame carries it (README).
 type Batch struct {
 	V      int64           `json:"v"`
 	Ref    string          `json:"ref"`

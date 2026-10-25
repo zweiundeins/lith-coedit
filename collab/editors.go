@@ -9,12 +9,10 @@ import (
 
 	"github.com/zweiundeins/lith/sqlite"
 	"github.com/zweiundeins/lith/writer"
-
-	"github.com/zweiundeins/tickit/internal/access"
 )
 
 // Client is a tab as other editors see it, made from its id: the first
-// 12 hex digits of SHA-256 (docs/editor.md). The editor's page picks a
+// 12 hex digits of SHA-256. The editor's page picks a
 // random one instead (its GET knows no tab id); both keep tab ids private.
 func Client(tab string) string {
 	h := sha256.Sum256([]byte(tab))
@@ -46,14 +44,14 @@ type Open struct {
 	At           time.Time
 }
 
-// Valid reports whether the row's fields are well formed.
-func (o Open) Valid() bool {
-	return o.Session != "" && o.Tab != "" && ValidID(o.ID) && o.Person != "" && o.Base >= 0 && ValidClient(o.Client)
+// valid reports whether the row's fields are well formed.
+func (k *Kind) valid(o Open) bool {
+	return o.Session != "" && o.Tab != "" && k.cfg.ValidID(o.ID) && o.Person != "" && o.Base >= 0 && ValidClient(o.Client)
 }
 
 // Open writes the editing tab's row.
 func (k *Kind) Open(tx *writer.Tx, o Open) error {
-	if !o.Valid() {
+	if !k.valid(o) {
 		return errors.New("collab: a malformed editor")
 	}
 	ds, err := k.State(tx, o.ID)
@@ -81,7 +79,7 @@ func (k *Kind) Close(tx *writer.Tx, session, tab string) (string, error) {
 	return id, nil
 }
 
-// Presence is an editing tab's selection and acknowledged version (MP-06):
+// Presence is an editing tab's selection and acknowledged version:
 // at most every 100 ms; a post that a newer one (Seq) overtook changes
 // nothing. The handler sends it (writer.Send): the next one replaces it.
 type Presence struct {
@@ -96,7 +94,7 @@ type Presence struct {
 }
 
 func (c Presence) Validate() error {
-	if c.Kind == nil || c.Session == "" || c.Tab == "" || !ValidID(c.ID) || c.Ack < 0 || c.V < 0 || c.Anchor < 0 || c.Head < 0 || c.Seq < 0 {
+	if c.Kind == nil || c.Session == "" || c.Tab == "" || !c.Kind.cfg.ValidID(c.ID) || c.Ack < 0 || c.V < 0 || c.Anchor < 0 || c.Head < 0 || c.Seq < 0 {
 		return errors.New("collab: a malformed presence")
 	}
 	return nil
@@ -124,15 +122,15 @@ type EditorRow struct {
 	MovedAt                        time.Time
 }
 
-// Editor reads the row of an editing tab of a person; access.ErrNotFound
-// when there is none.
+// Editor reads the row of an editing tab of a person; an error that is
+// Config.NotFound when there is none.
 func (k *Kind) Editor(ctx context.Context, q sqlite.Querier, tab, person string) (EditorRow, error) {
 	var r EditorRow
 	var moved int64
 	err := q.QueryRowContext(ctx, k.sql.editor, tab, person).
 		Scan(&r.Tab, &r.ID, &r.Person, &r.Client, &r.Epoch, &r.Ack, &r.V, &r.Anchor, &r.Head, &r.Refusal, &moved)
 	if err != nil {
-		return r, access.ErrNotFound
+		return r, k.cfg.NotFound
 	}
 	r.MovedAt = time.UnixMilli(moved)
 	return r, nil

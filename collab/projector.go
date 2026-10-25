@@ -4,7 +4,7 @@ import (
 	"github.com/zweiundeins/lith/events"
 	"github.com/zweiundeins/lith/writer"
 
-	"github.com/zweiundeins/tickit/internal/doc"
+	"github.com/zweiundeins/prosemirror-go"
 )
 
 // Checkpoint is how many commits the head table's document may lag
@@ -16,19 +16,19 @@ const Checkpoint = 50
 // the document as of a checkpoint. changed, when set, sees every new head
 // document that may refer to something new (created, snapshot, a commit
 // with steps), for the subject's own tables, which tables names.
-func (k *Kind) Projector(name string, version int, changed func(tx *writer.Tx, id string, d doc.Doc) error, tables ...string) *events.Projector[string, Event] {
-	hook := func(tx *writer.Tx, id string, d doc.Doc) error {
+func (k *Kind) Projector(name string, version int, changed func(tx *writer.Tx, id string, d prosemirror.Doc) error, tables ...string) *events.Projector[string, Event] {
+	hook := func(tx *writer.Tx, id string, d prosemirror.Doc) error {
 		if changed == nil {
 			return nil
 		}
 		return changed(tx, id, d)
 	}
-	start := func(tx *writer.Tx, id, epoch string, version int64, raw []byte, at int64) (doc.Doc, error) {
-		d, err := doc.ParseDoc(raw)
+	start := func(tx *writer.Tx, id, epoch string, version int64, raw []byte, at int64) (prosemirror.Doc, error) {
+		d, err := k.cfg.Schema.ParseDoc(raw)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(k.sql.insertHead, id, epoch, version, version, string(Marshal(d)), d.JSONLen(), d.Blocks(), at); err != nil {
+		if _, err := tx.Exec(k.sql.insertHead, id, epoch, version, version, string(marshal(d)), d.JSONLen(), d.Blocks(), at); err != nil {
 			return nil, err
 		}
 		docs.put(docKey{k.cfg.Name, id, epoch, version, ""}, d)
@@ -64,17 +64,17 @@ func (k *Kind) Projector(name string, version int, changed func(tx *writer.Tx, i
 				if err != nil {
 					return err
 				}
-				steps, err := doc.ParseSteps(r.Data.Steps)
+				steps, err := k.cfg.Schema.ParseSteps(r.Data.Steps)
 				if err != nil {
 					return err
 				}
-				if d, err = doc.Apply(before, steps); err != nil {
+				if d, err = prosemirror.Apply(before, steps); err != nil {
 					return err
 				}
 				docs.put(docKey{k.cfg.Name, r.ID, epoch, r.Version, r.Data.Ref}, d)
 			}
 			if r.Version-checkpoint >= Checkpoint {
-				if _, err := tx.Exec(k.sql.setCheckpoint, r.Version, string(Marshal(d)), r.ID); err != nil {
+				if _, err := tx.Exec(k.sql.setCheckpoint, r.Version, string(marshal(d)), r.ID); err != nil {
 					return err
 				}
 			}

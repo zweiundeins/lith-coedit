@@ -6,11 +6,11 @@ import (
 	"github.com/zweiundeins/lith/writer"
 )
 
-// An editing tab whose commits the demo's guard refuses (a blocked
-// guest, MP-14.1) is paused: its row's refusal says so, and its view then
-// renders the editor read-only with the reason, so the editor stops
-// sending, says why at the editor and keeps the person's text, unsaved,
-// in their browser only (MP-14.2). Opening the editor again clears it.
+// An editing tab whose commits the app refuses before they reach the
+// writer (a blocked guest) is paused: its row's refusal says so, and its
+// view then renders the editor read-only with the reason, so the editor
+// stops sending, says why at the editor and keeps the person's text,
+// unsaved, in their browser only. Opening the editor again clears it.
 
 type pausedRefusal struct {
 	Paused  bool   `json:"paused"`

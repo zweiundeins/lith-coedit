@@ -8,13 +8,10 @@ import (
 
 	"github.com/zweiundeins/lith/events"
 	"github.com/zweiundeins/lith/writer"
-
-	"github.com/zweiundeins/tickit/internal/access"
-	"github.com/zweiundeins/tickit/internal/doc"
-	"github.com/zweiundeins/tickit/internal/tabs"
+	"github.com/zweiundeins/prosemirror-go"
 )
 
-// Answer is a commit's answer (docs/editor.md, "Wire format").
+// Answer is a commit's answer (README, "The protocol").
 type Answer byte
 
 const (
@@ -25,15 +22,16 @@ const (
 )
 
 // Commit applies an editor's commit to a subject's document: it maps its
-// steps over the commits since Base (doc.Rebase), checks the result
-// (doc.Rules, then Check) and appends it with events.Exactly(head). A
+// steps over the commits since Base (prosemirror.Rebase), checks the result
+// (the Kind's Rules, then Check) and appends it with events.Exactly(head). A
 // resent commit applies once: its ref and client among the commits since
 // its base answer Applied, so it needs no op id. Its result is an
 // Answer; a refusal by a rule goes into the editing tab's row (the
 // editors table's refusal) for its view.
 type Commit struct {
-	Kind         *Kind
-	By           tabs.By
+	Kind *Kind
+	// Meta is the commit's event metadata; its Actor is who commits.
+	Meta         events.Meta
 	Session, Tab string
 	ID           string
 	Epoch        string
@@ -42,32 +40,56 @@ type Commit struct {
 	Client       string
 	Steps        json.RawMessage
 
-	// Gate checks the subject inside the writer before anything else:
-	// ErrGone or access.ErrNotFound answer Stale, a denial Readonly.
+	// Gate is the app's check, inside the writer before anything else,
+	// that the actor may edit the subject now: ErrGone, ErrNotFound or
+	// Config.NotFound answer Stale, an error with a Denied() bool method
+	// that says true answers Readonly, any other fails the commit.
 	Gate func(tx *writer.Tx) error
 	// Check refuses a document beyond the rules, with a message for the
 	// person; "" lets it through. Optional.
-	Check func(head, next doc.Doc) string
+	Check func(head, next prosemirror.Doc) string
 
 	// Took is how long the writer spent on it, for the measurements.
 	Took time.Duration
 
-	steps []doc.Step
+	steps []prosemirror.Step
 	bad   error
 	ready bool
+}
+
+// Commit limits beyond the rules.
+const (
+	MaxCommitSteps = 500
+	MaxCommitBytes = 256 << 10
+)
+
+// ParseCommit reads the steps of a commit: at most MaxCommitSteps steps
+// in MaxCommitBytes; a larger one is a *prosemirror.RuleError.
+func ParseCommit(s *prosemirror.Schema, data []byte) ([]prosemirror.Step, error) {
+	if len(data) > MaxCommitBytes {
+		return nil, &prosemirror.RuleError{Msg: "This change is too large to save at once."}
+	}
+	steps, err := s.ParseSteps(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(steps) > MaxCommitSteps {
+		return nil, &prosemirror.RuleError{Msg: "This change has too many steps to save at once."}
+	}
+	return steps, nil
 }
 
 // Validate parses the steps outside the writer: ParseCommit is the
 // costly part that needs no transaction.
 func (c *Commit) Validate() error {
-	if c.By.Actor.IsZero() {
+	if c.Meta.Actor == "" {
 		return errors.New("collab: a commit needs an actor")
 	}
-	if c.Kind == nil || !ValidID(c.ID) || c.Ref == "" || len(c.Ref) > 64 || c.Base < 0 || len(c.Client) > 64 {
+	if c.Kind == nil || !c.Kind.cfg.ValidID(c.ID) || c.Ref == "" || len(c.Ref) > 64 || c.Base < 0 || len(c.Client) > 64 {
 		return errors.New("collab: a malformed commit")
 	}
-	steps, err := doc.ParseCommit(c.Steps)
-	var re *doc.RuleError
+	steps, err := ParseCommit(c.Kind.cfg.Schema, c.Steps)
+	var re *prosemirror.RuleError
 	switch {
 	case errors.As(err, &re):
 		c.bad = re
@@ -99,7 +121,7 @@ func (c *Commit) ApplyResult(tx *writer.Tx) ([]byte, error) {
 	})
 	var denial interface{ Denied() bool }
 	switch {
-	case errors.Is(err, ErrStale) || errors.Is(err, ErrGone) || errors.Is(err, access.ErrNotFound):
+	case errors.Is(err, ErrStale) || errors.Is(err, ErrGone) || errors.Is(err, ErrNotFound) || errors.Is(err, c.Kind.cfg.NotFound):
 		return []byte{byte(Stale)}, nil
 	case errors.As(err, &denial) && denial.Denied():
 		return []byte{byte(Readonly)}, nil
@@ -131,7 +153,7 @@ func (c *Commit) apply(tx *writer.Tx) (string, error) {
 		return "", err
 	}
 	if ds.Epoch != c.Epoch {
-		return "", ErrStale // MP-13.2: never across a reset
+		return "", ErrStale // never across a reset
 	}
 	if c.Base > ds.Version {
 		return "", ErrStale // a version the document never had: the editor starts again
@@ -146,13 +168,13 @@ func (c *Commit) apply(tx *writer.Tx) (string, error) {
 	if c.Base < ds.Version && first != c.Base+1 {
 		return "", ErrStale // folded away: the editor starts again
 	}
-	var mapped []doc.Step
+	var mapped []prosemirror.Step
 	for _, s := range since {
 		if s.Snapshot != nil {
 			return "", ErrStale
 		}
 		if s.Ref == c.Ref && s.Client == c.Client {
-			return "", nil // resent: it applied already, after its base (NFR-43: no op id kept per commit)
+			return "", nil // resent: it applied already, after its base (no op id is kept per commit)
 		}
 		mapped = append(mapped, s.Steps...)
 	}
@@ -160,27 +182,27 @@ func (c *Commit) apply(tx *writer.Tx) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next, applied, err := doc.Rebase(head, mapped, c.steps)
+	next, applied, err := prosemirror.Rebase(head, mapped, c.steps)
 	if err != nil {
 		return "This change no longer fits the " + k.cfg.Noun + ".", nil
 	}
-	if msg := k.check(tx, head, next, c.Check); msg != "" {
+	if msg := k.check(tx, c.Meta.Actor, c.ID, head, next, c.Check); msg != "" {
 		return msg, nil
 	}
-	raw, err := doc.MarshalSteps(applied)
+	raw, err := prosemirror.MarshalSteps(applied)
 	if err != nil {
 		return "", err
 	}
-	if err := k.append(tx, c.By, c.ID, ds, Committed{Ref: c.Ref, Client: c.Client, Base: c.Base, Steps: raw}, applied, next); err != nil {
+	if err := k.append(tx, c.Meta, c.ID, ds, Committed{Ref: c.Ref, Client: c.Client, Base: c.Base, Steps: raw}, applied, next); err != nil {
 		return "", err
 	}
 	return "", nil
 }
 
 // check runs the Kind's rules and the subject's own check.
-func (k *Kind) check(tx *writer.Tx, head, next doc.Doc, own func(head, next doc.Doc) string) string {
-	if err := k.rulesIn(tx).Check(head, next); err != nil {
-		var re *doc.RuleError
+func (k *Kind) check(tx *writer.Tx, actor, id string, head, next prosemirror.Doc, own func(head, next prosemirror.Doc) string) string {
+	if err := k.Rules(tx, actor, id).Check(head, next); err != nil {
+		var re *prosemirror.RuleError
 		if errors.As(err, &re) {
 			return re.Msg
 		}
@@ -194,14 +216,13 @@ func (k *Kind) check(tx *writer.Tx, head, next doc.Doc, own func(head, next doc.
 
 // append appends a commit at the state's head, with the document it
 // makes for the cache.
-func (k *Kind) append(tx *writer.Tx, by tabs.By, id string, ds State, e Committed, applied []doc.Step, next doc.Doc) error {
+func (k *Kind) append(tx *writer.Tx, m events.Meta, id string, ds State, e Committed, applied []prosemirror.Step, next prosemirror.Doc) error {
 	v := ds.Version + 1
 	docs.put(docKey{k.cfg.Name, id, ds.Epoch, v, e.Ref}, next)
-	m := by.Meta()
 	if m.At.IsZero() {
 		m.At = time.Now()
 	}
-	if err := events.Execute(k.store(), tx, CommitDecider, k.Stream.ID(id), events.Exactly(ds.Version), e, m); err != nil {
+	if err := events.Execute(k.store(), tx, k.CommitDecider, k.Stream.ID(id), events.Exactly(ds.Version), e, m); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`INSERT OR IGNORE INTO collab_uncut (kind, id, at) VALUES (?, ?, ?)`, k.cfg.Name, id, m.At.UnixMilli()); err != nil {
@@ -218,11 +239,12 @@ func (k *Kind) append(tx *writer.Tx, by tabs.By, id string, ds State, e Committe
 }
 
 // CommitWhole replaces a subject's document with d in one commit made on
-// the head: the one step of doc.RestoreStep, so that open editors keep
-// their places outside what changed. The client is "" (no tab); ref
-// names it. A document the rules or check refuse is refused on field. It
-// reports whether it committed: an equal document commits nothing.
-func (k *Kind) CommitWhole(tx *writer.Tx, by tabs.By, id string, d doc.Doc, ref, field string, check func(head, next doc.Doc) string) (bool, error) {
+// the head: the one step of prosemirror.RestoreStep, so that open editors
+// keep their places outside what changed. The client is "" (no tab); ref
+// names it. A document the rules or check refuse is a *writer.Refusal
+// with the message. It reports whether it committed: an equal document
+// commits nothing.
+func (k *Kind) CommitWhole(tx *writer.Tx, m events.Meta, id string, d prosemirror.Doc, ref string, check func(head, next prosemirror.Doc) string) (bool, error) {
 	ctx := tx.Context()
 	ds, err := k.State(tx, id)
 	if err != nil {
@@ -232,7 +254,7 @@ func (k *Kind) CommitWhole(tx *writer.Tx, by tabs.By, id string, d doc.Doc, ref,
 	if err != nil {
 		return false, err
 	}
-	step := doc.RestoreStep(head, d)
+	step := prosemirror.RestoreStep(head, d)
 	if step == nil {
 		return false, nil
 	}
@@ -240,21 +262,21 @@ func (k *Kind) CommitWhole(tx *writer.Tx, by tabs.By, id string, d doc.Doc, ref,
 	if err != nil {
 		return false, err
 	}
-	if msg := k.check(tx, head, next, check); msg != "" {
-		return false, tabs.Refuse(field, msg)
+	if msg := k.check(tx, m.Actor, id, head, next, check); msg != "" {
+		return false, &writer.Refusal{Msg: msg}
 	}
-	raw, err := doc.MarshalSteps([]doc.Step{step})
+	raw, err := prosemirror.MarshalSteps([]prosemirror.Step{step})
 	if err != nil {
 		return false, err
 	}
-	return true, k.append(tx, by, id, ds, Committed{Ref: ref, Base: ds.Version, Steps: raw}, []doc.Step{step}, next)
+	return true, k.append(tx, m, id, ds, Committed{Ref: ref, Base: ds.Version, Steps: raw}, []prosemirror.Step{step}, next)
 }
 
 // StepsSince are the steps of a subject's commits after version base up
 // to the state's head, in a command: what a position made at base maps
 // through. ErrStale when base is newer than the head or the commits
 // after it were folded away.
-func (k *Kind) StepsSince(tx *writer.Tx, id string, s State, base int64) ([]doc.Step, error) {
+func (k *Kind) StepsSince(tx *writer.Tx, id string, s State, base int64) ([]prosemirror.Step, error) {
 	if base > s.Version || base < 0 {
 		return nil, ErrStale
 	}
@@ -265,7 +287,7 @@ func (k *Kind) StepsSince(tx *writer.Tx, id string, s State, base int64) ([]doc.
 	if base < s.Version && first != base+1 {
 		return nil, ErrStale
 	}
-	var out []doc.Step
+	var out []prosemirror.Step
 	for _, c := range since {
 		if c.Snapshot != nil {
 			return nil, ErrStale
