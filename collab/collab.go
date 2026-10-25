@@ -310,7 +310,7 @@ func queriesOf(c Config) queries {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (sid, tab_id) DO UPDATE SET ` + k + ` = excluded.` + k + `, person_id = excluded.person_id, epoch = excluded.epoch,
 			client = excluded.client, ack = CASE WHEN ` + e + `.` + k + ` = excluded.` + k + ` AND ` + e + `.epoch = excluded.epoch THEN max(` + e + `.ack, excluded.ack) ELSE excluded.ack END,
-			v = excluded.v, refusal = '', seen_at = excluded.seen_at`,
+			v = excluded.v, seq = 0, refusal = '', seen_at = excluded.seen_at`,
 		presence: `UPDATE ` + e + ` SET ack = max(ack, ?), v = ?, anchor = ?, head = ?, seq = ?, seen_at = ?,
 		moved_at = CASE WHEN anchor != ? OR head != ? OR v != ? THEN ? ELSE moved_at END
 		WHERE sid = ? AND tab_id = ? AND ` + k + ` = ? AND epoch = ? AND seq < ?`,

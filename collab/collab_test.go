@@ -35,6 +35,10 @@ var notes = collab.NewKind(collab.Config{
 	Head: "note_doc", Editors: "note_editors", Key: "note_id",
 	EditorTopic: func(tab string) string { return "editor:" + tab },
 	CaretsTopic: func(id string) string { return "carets:" + id },
+	OnCommit: func(tx *writer.Tx, id string, steps []prosemirror.Step, next prosemirror.Doc) error {
+		onCommit = append(onCommit, id+":"+strconv.Itoa(len(steps))+":"+next.TextBetween(0, next.Content().Size(), "", nil))
+		return nil
+	},
 	Rules: func(tx *writer.Tx, actor, id string) prosemirror.Rules {
 		return prosemirror.Rules{Noun: "note", Nodes: map[string]func(n, parent *prosemirror.Node) error{
 			"photo": func(n, _ *prosemirror.Node) error {
@@ -47,6 +51,9 @@ var notes = collab.NewKind(collab.Config{
 		}}
 	},
 })
+
+// onCommit records what Config.OnCommit saw: subject, steps and text.
+var onCommit []string
 
 var projector = notes.Projector("notes", 1, nil)
 
@@ -335,9 +342,124 @@ func TestParseCommit(t *testing.T) {
 }
 
 func TestAnswerStatus(t *testing.T) {
-	for a, want := range map[collab.Answer]int{collab.Applied: 204, collab.Stale: 409, collab.Refused: 422, collab.Readonly: 403, 'x': 500} {
+	for a, want := range map[collab.Answer]int{collab.Applied: 204, collab.Stale: 409, collab.Refused: 422, collab.Readonly: 409, 'x': 500} {
 		if got := a.Status(); got != want {
 			t.Errorf("%c: %d, want %d", a, got, want)
 		}
+	}
+}
+
+func createNote(t *testing.T, e *env, id, text string) {
+	t.Helper()
+	d, _ := schema.ParseDoc([]byte(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"` + text + `"}]}]}`))
+	e.must(func(tx *writer.Tx) error { _, err := notes.Create(tx, id, d, events.Meta{Actor: "ada"}); return err })
+}
+
+func openTab(t *testing.T, e *env, tab string) {
+	t.Helper()
+	e.must(func(tx *writer.Tx) error {
+		return notes.Open(tx, collab.Open{Session: "s1", Tab: tab, ID: "n1", Person: "ada", Base: 1, Client: collab.Client(tab), At: time.Now()})
+	})
+}
+
+// StepsSince are the steps after a base; OnCommit sees every commit's.
+func TestStepsSinceAndOnCommit(t *testing.T) {
+	e := open(t)
+	onCommit = nil
+	createNote(t, e, "n1", "ab")
+	for i, s := range []string{"x", "y"} {
+		if a := e.commit(&collab.Commit{ID: "n1", Base: int64(1 + i), Ref: "r" + s, Steps: []byte(insert(2, s))}); a != collab.Applied {
+			t.Fatalf("commit: %c", a)
+		}
+	}
+	if strings.Join(onCommit, ",") != "n1:1:axb,n1:1:ayxb" {
+		t.Errorf("OnCommit saw %v", onCommit)
+	}
+	e.must(func(tx *writer.Tx) error {
+		s, err := notes.State(tx, "n1")
+		if err != nil {
+			return err
+		}
+		steps, err := notes.StepsSince(tx, "n1", s, 1)
+		if err != nil || len(steps) != 2 {
+			t.Errorf("since 1: %d steps, %v", len(steps), err)
+		}
+		if _, err := notes.StepsSince(tx, "n1", s, 9); !errors.Is(err, collab.ErrStale) {
+			t.Errorf("since a future version: %v", err)
+		}
+		return nil
+	})
+}
+
+// Pause marks a tab's row once; opening again clears it; the sweep takes
+// rows not seen for a day.
+func TestPauseAndSweep(t *testing.T) {
+	e := open(t)
+	createNote(t, e, "n1", "ab")
+	openTab(t, e, "t1")
+	e.must(func(tx *writer.Tx) error { return notes.Pause(tx, "s1", "t1", "n1", "Paused for now.") })
+	row, err := notes.Editor(context.Background(), e.db.R, "t1", "ada")
+	if msg, ok := collab.Paused(row.Refusal); err != nil || !ok || msg != "Paused for now." {
+		t.Fatalf("paused %q %v %v", row.Refusal, ok, err)
+	}
+	openTab(t, e, "t1")
+	if row, _ := notes.Editor(context.Background(), e.db.R, "t1", "ada"); row.Refusal != "" {
+		t.Errorf("open again keeps %q", row.Refusal)
+	}
+	e.must(func(tx *writer.Tx) error { return notes.SweepEditors(tx, time.Now().Add(23*time.Hour)) })
+	if _, err := notes.Editor(context.Background(), e.db.R, "t1", "ada"); err != nil {
+		t.Errorf("swept a row seen within a day: %v", err)
+	}
+	e.must(func(tx *writer.Tx) error { return notes.SweepEditors(tx, time.Now().Add(25*time.Hour)) })
+	if _, err := notes.Editor(context.Background(), e.db.R, "t1", "ada"); !errors.Is(err, collab.ErrNotFound) {
+		t.Errorf("a row a day old: %v", err)
+	}
+}
+
+// A refusal for a tab without an editing row answers Stale, as nothing
+// could tell the tab why; a new open starts presence again at seq 0.
+func TestRefusalWithoutRowAndReopen(t *testing.T) {
+	e := open(t)
+	createNote(t, e, "n1", "ab")
+	photo := []byte(`[{"stepType":"replace","from":4,"to":4,"slice":{"content":[{"type":"photo","attrs":{"id":"p9"}}]}}]`)
+	if a := e.commit(&collab.Commit{ID: "n1", Base: 1, Ref: "a", Steps: photo}); a != collab.Stale {
+		t.Errorf("a refusal without a row: %c", a)
+	}
+	openTab(t, e, "t1")
+	presence := func(seq int64, anchor int) {
+		p := collab.Presence{Kind: notes, Session: "s1", Tab: "t1", ID: "n1", Epoch: "e0", Ack: 1, V: 1, Anchor: anchor, Head: anchor, Seq: seq, At: time.Now()}
+		e.must(p.Apply)
+	}
+	presence(50, 2)
+	openTab(t, e, "t1")
+	presence(1, 3)
+	if row, _ := notes.Editor(context.Background(), e.db.R, "t1", "ada"); row.Anchor != 3 {
+		t.Errorf("presence after a new open: anchor %d", row.Anchor)
+	}
+}
+
+// A commit whose batch fails leaves its document out of the cache.
+func TestFailedBatchCachesNothing(t *testing.T) {
+	e := open(t)
+	createNote(t, e, "n1", "ab")
+	c := &collab.Commit{Kind: notes, Meta: events.Meta{Actor: "ada"}, Session: "s1", Tab: "t1", ID: "n1", Epoch: "e0", Base: 1, Ref: "gone", Client: "0123456789ab", Steps: []byte(insert(2, "x"))}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	boom := errors.New("boom")
+	err := e.do(func(tx *writer.Tx) error {
+		if _, err := c.ApplyResult(tx); err != nil {
+			return err
+		}
+		return boom
+	})
+	if !errors.Is(err, boom) {
+		t.Fatal(err)
+	}
+	if collab.Cached("notedoc", "n1", "e0", 2, "gone") {
+		t.Error("the document of a failed batch is in the cache")
+	}
+	if a := e.commit(&collab.Commit{ID: "n1", Base: 1, Ref: "kept", Steps: []byte(insert(2, "x"))}); a != collab.Applied || !collab.Cached("notedoc", "n1", "e0", 2, "kept") {
+		t.Errorf("a committed commit: %c, cached %v", a, collab.Cached("notedoc", "n1", "e0", 2, "kept"))
 	}
 }

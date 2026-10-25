@@ -75,7 +75,7 @@ func (k *Kind) loadCommits(ctx context.Context, q sqlite.Querier, id, epoch stri
 // ref, through the cache: from the cache, or from the head table's
 // checkpoint and the commits since.
 func (k *Kind) docAt(ctx context.Context, q sqlite.Querier, id, epoch string, version int64, ref string, fill bool) (prosemirror.Doc, error) {
-	if d, ok := docs.get(docKey{k.cfg.Name, id, epoch, version, ref}); ok {
+	if d, ok := cached(q, docKey{k.cfg.Name, id, epoch, version, ref}); ok {
 		return d, nil
 	}
 	var rowEpoch, raw string
@@ -106,7 +106,7 @@ func (k *Kind) docAt(ctx context.Context, q sqlite.Querier, id, epoch string, ve
 			}
 		}
 	}
-	docs.put(docKey{k.cfg.Name, id, epoch, version, ref}, d)
+	keep(q, docKey{k.cfg.Name, id, epoch, version, ref}, d, fill)
 	return d, nil
 }
 

@@ -31,7 +31,7 @@ func (k *Kind) Projector(name string, version int, changed func(tx *writer.Tx, i
 		if _, err := tx.Exec(k.sql.insertHead, id, epoch, version, version, string(marshal(d)), d.JSONLen(), d.Blocks(), at); err != nil {
 			return nil, err
 		}
-		docs.put(docKey{k.cfg.Name, id, epoch, version, ""}, d)
+		stage(tx, docKey{k.cfg.Name, id, epoch, version, ""}, d)
 		return d, nil
 	}
 	return events.NewProjector(k.Stream, name, version,
@@ -56,7 +56,7 @@ func (k *Kind) Projector(name string, version int, changed func(tx *writer.Tx, i
 			if err := tx.QueryRow(k.sql.headRowCheckpoint, r.ID).Scan(&epoch, &version, &ref, &checkpoint); err != nil {
 				return err
 			}
-			d, ok := docs.get(docKey{k.cfg.Name, r.ID, epoch, r.Version, r.Data.Ref})
+			d, ok := cached(tx, docKey{k.cfg.Name, r.ID, epoch, r.Version, r.Data.Ref})
 			if !ok {
 				// A rebuild, or a cache that let it go: the document before,
 				// and this commit's steps.
@@ -71,7 +71,7 @@ func (k *Kind) Projector(name string, version int, changed func(tx *writer.Tx, i
 				if d, err = prosemirror.Apply(before, steps); err != nil {
 					return err
 				}
-				docs.put(docKey{k.cfg.Name, r.ID, epoch, r.Version, r.Data.Ref}, d)
+				stage(tx, docKey{k.cfg.Name, r.ID, epoch, r.Version, r.Data.Ref}, d)
 			}
 			if r.Version-checkpoint >= Checkpoint {
 				if _, err := tx.Exec(k.sql.setCheckpoint, r.Version, string(marshal(d)), r.ID); err != nil {

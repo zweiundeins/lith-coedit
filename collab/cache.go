@@ -5,6 +5,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/zweiundeins/lith/sqlite"
+	"github.com/zweiundeins/lith/writer"
+
 	"github.com/zweiundeins/prosemirror-go"
 )
 
@@ -67,9 +70,9 @@ func (c *lru[K, V]) put(k K, v V) {
 }
 
 // docKey names one immutable document: a subject's of a kind at a
-// version of an epoch, with the ref of the commit that made it. A commit
-// that a failed batch took back made a document under its own ref, which
-// no committed version names, so the cache never hands it out.
+// version of an epoch, with the ref of the commit that made it. A command
+// puts what it makes in the cache only once its batch has committed
+// (stage); until then its batch's commands and projectors read it there.
 type docKey struct {
 	kind, id, epoch string
 	version         int64
@@ -121,4 +124,50 @@ func (c *lru[K, V]) reset() {
 	c.m = map[K]*list.Element{}
 	c.cur = 0
 	c.mu.Unlock()
+}
+
+// pendingDocs is the writer-local key of the documents commands of the
+// batch made: the cache takes them once the batch has committed, so a
+// batch that fails leaves none there.
+type pendingDocs struct{}
+
+// stage keeps d for the commands and projectors of the batch, and puts
+// it in the document cache after the commit.
+func stage(tx *writer.Tx, k docKey, d prosemirror.Doc) {
+	p, _ := tx.Local(pendingDocs{}).(map[docKey]prosemirror.Doc)
+	if p == nil || len(p) > 1024 {
+		p = map[docKey]prosemirror.Doc{}
+		tx.SetLocal(pendingDocs{}, p)
+	}
+	p[k] = d
+	tx.AfterCommit(func() {
+		docs.put(k, d)
+		delete(p, k)
+	})
+}
+
+// cached returns a document from the cache or, in a command, from the
+// documents its batch made.
+func cached(q sqlite.Querier, k docKey) (prosemirror.Doc, bool) {
+	if d, ok := docs.get(k); ok {
+		return d, true
+	}
+	if tx, ok := q.(*writer.Tx); ok {
+		p, _ := tx.Local(pendingDocs{}).(map[docKey]prosemirror.Doc)
+		d, ok := p[k]
+		return d, ok
+	}
+	return nil, false
+}
+
+// keep puts a document in the cache: at once for a read of committed
+// state (fill), after the commit in a command.
+func keep(q sqlite.Querier, k docKey, d prosemirror.Doc, fill bool) {
+	if tx, ok := q.(*writer.Tx); ok {
+		stage(tx, k, d)
+		return
+	}
+	if fill {
+		docs.put(k, d)
+	}
 }

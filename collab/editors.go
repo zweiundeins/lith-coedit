@@ -3,6 +3,7 @@ package collab
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"time"
@@ -72,8 +73,11 @@ func (k *Kind) Open(tx *writer.Tx, o Open) error {
 func (k *Kind) Close(tx *writer.Tx, session, tab string) (string, error) {
 	var id string
 	err := tx.QueryRow(k.sql.closeEditor, session, tab).Scan(&id)
-	if err != nil {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil // no row: nothing to close
+	}
+	if err != nil {
+		return "", err
 	}
 	tx.Touch(k.EditorTopic(tab), k.CaretsTopic(id))
 	return id, nil
@@ -129,8 +133,11 @@ func (k *Kind) Editor(ctx context.Context, q sqlite.Querier, tab, person string)
 	var moved int64
 	err := q.QueryRowContext(ctx, k.sql.editor, tab, person).
 		Scan(&r.Tab, &r.ID, &r.Person, &r.Client, &r.Epoch, &r.Ack, &r.V, &r.Anchor, &r.Head, &r.Refusal, &moved)
-	if err != nil {
+	if errors.Is(err, sql.ErrNoRows) {
 		return r, k.cfg.NotFound
+	}
+	if err != nil {
+		return r, err
 	}
 	r.MovedAt = time.UnixMilli(moved)
 	return r, nil

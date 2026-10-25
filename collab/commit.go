@@ -19,7 +19,7 @@ const (
 	Applied  Answer = 'a' // 204: applied, or applied before
 	Stale    Answer = 's' // 409: another epoch, the subject is gone, or base is older than the fold
 	Refused  Answer = 'r' // 422: a rule refused it; the editor's row says why
-	Readonly Answer = 'o' // 403: the actor may not edit the subject
+	Readonly Answer = 'o' // 409: the actor may not edit the subject; the frame says readonly
 )
 
 // Status is the HTTP status a commit's route answers with.
@@ -32,7 +32,7 @@ func (a Answer) Status() int {
 	case Refused:
 		return http.StatusUnprocessableEntity
 	case Readonly:
-		return http.StatusForbidden
+		return http.StatusConflict
 	}
 	return http.StatusInternalServerError
 }
@@ -145,8 +145,12 @@ func (c *Commit) ApplyResult(tx *writer.Tx) ([]byte, error) {
 		return nil, err
 	case refusal != "":
 		b, _ := json.Marshal(map[string]string{"ref": c.Ref, "message": refusal})
-		if _, err := tx.Exec(c.Kind.sql.refusal, string(b), c.Session, c.Tab, c.ID); err != nil {
+		res, err := tx.Exec(c.Kind.sql.refusal, string(b), c.Session, c.Tab, c.ID)
+		if err != nil {
 			return nil, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return []byte{byte(Stale)}, nil // no editing row to say why: the editor opens again
 		}
 		tx.Touch(c.Kind.EditorTopic(c.Tab))
 		return []byte{byte(Refused)}, nil
@@ -234,7 +238,7 @@ func (k *Kind) check(tx *writer.Tx, actor, id string, head, next prosemirror.Doc
 // makes for the cache.
 func (k *Kind) append(tx *writer.Tx, m events.Meta, id string, ds State, e Committed, applied []prosemirror.Step, next prosemirror.Doc) error {
 	v := ds.Version + 1
-	docs.put(docKey{k.cfg.Name, id, ds.Epoch, v, e.Ref}, next)
+	stage(tx, docKey{k.cfg.Name, id, ds.Epoch, v, e.Ref}, next)
 	if m.At.IsZero() {
 		m.At = time.Now()
 	}
