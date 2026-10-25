@@ -1,0 +1,20 @@
+{
+  "name": "coedit-editor",
+  "private": true,
+  "type": "module",
+  "description": "The shared JavaScript of coedit's editors: the commit protocol, carets and inline-comment anchoring on ProseMirror. Apps bundle src/ with their own editor (README).",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/unit/*.test.js"
+  },
+  "dependencies": {
+    "prosemirror-model": "1.25.12",
+    "prosemirror-state": "1.4.4",
+    "prosemirror-transform": "1.12.2",
+    "prosemirror-view": "1.42.6"
+  },
+  "devDependencies": {
+    "@stepwisehq/prosemirror-collab-commit": "1.0.5",
+    "prosemirror-history": "1.5.1"
+  }
+}
