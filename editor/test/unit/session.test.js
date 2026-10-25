@@ -146,3 +146,32 @@ test('insertNode goes out in the normal commit, with its id', async () => {
 	assert.equal(a.session.unsaved(), 0)
 	a.session.destroy()
 })
+
+test('a 429 backs off and resends; an answered commit waits for its frame', async () => {
+	const auth = new Authority({ schema, doc: seedDoc })
+	const o = auth.open('a')
+	const attrs = { epoch: o.epoch, client: o.client, tab: 'a', state: 'ok', batches: '[]', carets: '[]', comments: '', refusal: '' }
+	const view = {
+		state: EditorState.create({ doc: schema.nodeFromJSON(o.doc), plugins: [collab({ version: o.base }), caretPlugin(), commentPlugin()] }),
+		dispatch(tr) {
+			this.state = this.state.apply(tr)
+			session.transaction(tr)
+		},
+		setProps() {},
+		hasFocus: () => false,
+	}
+	const sent = []
+	const events = []
+	const session = new Session({ view, schema, read: () => attrs, presenceMs: 0, confirmWait: 400, backoff: [30, 60], emit: (type, d) => (events.push(type), type === 'commit' && sent.push(d.ref)) })
+	view.dispatch(view.state.tr.insertText('x', 1))
+	assert.equal(sent.length, 1)
+	session.posted(sent[0], true, 429)
+	assert.ok(events.includes('throttled'))
+	await tick(80)
+	assert.equal(sent.length, 2, 'resent after the first backoff')
+	assert.equal(sent[1], sent[0], 'with the same ref')
+	session.posted(sent[1], true, 204)
+	await tick(100)
+	assert.equal(sent.length, 2, 'an answered commit waits for its frame')
+	session.destroy()
+})
