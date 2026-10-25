@@ -19,7 +19,7 @@ func TestEditorRebaseIsTheOracles(t *testing.T) {
 	if err != nil {
 		t.Skip("go list: ", err)
 	}
-	oracle, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(dir)), "testdata/oracle/src/rebase.js"))
+	oracle, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(dir)), "oracle/src/rebase.js"))
 	if err != nil {
 		t.Skip("prosemirror-go has no oracle sources here: ", err)
 	}
@@ -39,7 +39,7 @@ func TestEditorRebaseIsTheOracles(t *testing.T) {
 		return strings.Join(out, "\n")
 	}
 	if code(ed) != code(oracle) {
-		t.Fatal("editor/test/authority/rebase.js differs from prosemirror-go's testdata/oracle/src/rebase.js")
+		t.Fatal("editor/test/authority/rebase.js differs from prosemirror-go's oracle/src/rebase.js")
 	}
 }
 
