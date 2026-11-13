@@ -2,6 +2,10 @@
 
 Until 1.0, a minor release may change the API; its entry says what to change in an app.
 
+## v0.2.0 (2026-11-13)
+
+- `collab.TextSchema`, `TextDoc` and `TextOf`: documents of plain text. `Commit.Text` commits the whole text an editor has on its base in place of steps; the writer diffs it against the document at the base and rebases the step it gets. No change for an app that sends steps.
+
 ## v0.1.0 (2026-10-25)
 
 The first release: tickit's `internal/collab` and the shared parts of its editor, extracted as a module of its own on prosemirror-go and lith v0.5.1. To move an app from `internal/collab`:

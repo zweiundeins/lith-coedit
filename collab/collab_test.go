@@ -65,12 +65,16 @@ type env struct {
 
 func open(t *testing.T) *env {
 	t.Helper()
-	ddl, err := os.ReadFile("testdata/001_notes.sql")
-	if err != nil {
-		t.Fatal(err)
+	migrations := fstest.MapFS{}
+	for _, name := range []string{"001_notes.sql", "002_runs.sql"} {
+		ddl, err := os.ReadFile("testdata/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		migrations[name] = &fstest.MapFile{Data: ddl}
 	}
 	db, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "test.db"), sqlite.Options{
-		Migrations: fstest.MapFS{"001_notes.sql": {Data: ddl}},
+		Migrations: migrations,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +84,7 @@ func open(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	go w.Run(context.Background())
-	store = events.Must(events.New(projector))
+	store = events.Must(events.New(projector, runProjector))
 	r := events.NewRunner(store, db, w, events.Options{})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -123,7 +127,10 @@ func (e *env) commit(c *collab.Commit) collab.Answer {
 	if c.Meta.Actor == "" {
 		c.Meta.Actor = "ada"
 	}
-	c.Kind, c.Session, c.Tab = notes, "s1", "t1"
+	if c.Kind == nil {
+		c.Kind = notes
+	}
+	c.Session, c.Tab = "s1", "t1"
 	if c.Epoch == "" {
 		c.Epoch = "e0"
 	}

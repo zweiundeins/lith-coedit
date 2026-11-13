@@ -55,6 +55,11 @@ type Commit struct {
 	Ref          string
 	Client       string
 	Steps        json.RawMessage
+	// Text, in place of Steps, is the whole text of a document of a
+	// plain-text schema (TextSchema) as the editor has it on Base: the
+	// writer turns what changed since the document at Base into one step
+	// (prosemirror.RestoreStep) and rebases it as it rebases steps.
+	Text *string
 
 	// Gate is the app's check, inside the writer before anything else,
 	// that the actor may edit the subject now: ErrGone, ErrNotFound or
@@ -69,6 +74,7 @@ type Commit struct {
 	Took time.Duration
 
 	steps []prosemirror.Step
+	text  prosemirror.Doc
 	bad   error
 	ready bool
 }
@@ -104,6 +110,9 @@ func (c *Commit) Validate() error {
 	if c.Kind == nil || !c.Kind.cfg.ValidID(c.ID) || c.Ref == "" || len(c.Ref) > 64 || c.Base < 0 || len(c.Client) > 64 {
 		return errors.New("collab: a malformed commit")
 	}
+	if c.Text != nil {
+		return c.validateText()
+	}
 	steps, err := ParseCommit(c.Kind.cfg.Schema, c.Steps)
 	var re *prosemirror.RuleError
 	switch {
@@ -113,6 +122,23 @@ func (c *Commit) Validate() error {
 		return fmt.Errorf("collab: malformed steps: %w", err)
 	}
 	c.steps, c.ready = steps, true
+	return nil
+}
+
+func (c *Commit) validateText() error {
+	if len(c.Steps) > 0 {
+		return errors.New("collab: a commit has steps or a text, not both")
+	}
+	if len(*c.Text) > MaxCommitBytes {
+		c.bad = &prosemirror.RuleError{Msg: "This change is too large to save at once."}
+		c.ready = true
+		return nil
+	}
+	d, err := textDoc(c.Kind.cfg.Schema, *c.Text)
+	if err != nil {
+		return fmt.Errorf("collab: a text commit on a schema without plain text: %w", err)
+	}
+	c.text, c.ready = d, true
 	return nil
 }
 
@@ -202,7 +228,20 @@ func (c *Commit) apply(tx *writer.Tx) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next, applied, err := prosemirror.Rebase(head, mapped, c.steps)
+	steps := c.steps
+	if c.text != nil {
+		base := head
+		if c.Base < ds.Version {
+			if base, err = k.docBefore(ctx, tx, c.ID, ds.Epoch, c.Base); err != nil {
+				return "", err
+			}
+		}
+		steps = nil
+		if s := prosemirror.RestoreStep(base, c.text); s != nil {
+			steps = []prosemirror.Step{s}
+		}
+	}
+	next, applied, err := prosemirror.Rebase(head, mapped, steps)
 	if err != nil {
 		return "This change no longer fits the " + k.cfg.Noun + ".", nil
 	}
