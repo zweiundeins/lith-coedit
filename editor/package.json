@@ -9,10 +9,10 @@
     "test": "node --test test/unit/*.test.js"
   },
   "dependencies": {
-    "prosemirror-model": "1.25.12",
+    "prosemirror-model": "1.25.13",
     "prosemirror-state": "1.4.4",
-    "prosemirror-transform": "1.12.2",
-    "prosemirror-view": "1.42.6"
+    "prosemirror-transform": "1.12.5",
+    "prosemirror-view": "1.42.9"
   },
   "devDependencies": {
     "@stepwisehq/prosemirror-collab-commit": "1.0.5",
