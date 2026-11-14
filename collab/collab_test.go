@@ -346,6 +346,11 @@ func TestParseCommit(t *testing.T) {
 	if _, err := collab.ParseCommit(schema, []byte(`[{"stepType":"addNodeMark","pos":0,"mark":{"type":"strong"}}]`)); err == nil || errors.As(err, &re) {
 		t.Errorf("a step type the server refuses: %v", err)
 	}
+	// prosemirror-transform 1.12.5 undoes a mark step with a markSet.
+	undo := `[{"stepType":"markSet","steps":[{"stepType":"removeMark","mark":{"type":"strong"},"from":1,"to":3},{"stepType":"removeMark","mark":{"type":"strong"},"from":5,"to":7}]}]`
+	if steps, err := collab.ParseCommit(schema, []byte(undo)); err != nil || len(steps) != 1 {
+		t.Errorf("an undone mark step: %v", err)
+	}
 }
 
 func TestAnswerStatus(t *testing.T) {
