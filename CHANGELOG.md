@@ -2,7 +2,7 @@
 
 Until 1.0, a minor release may change the API; its entry says what to change in an app.
 
-## Unreleased (v0.2.1)
+## v0.2.1 (2026-11-14)
 
 - `editor/`: ProseMirror pinned at prosemirror-model 1.25.13, prosemirror-transform 1.12.5 and prosemirror-view 1.42.9; an app pins the same in its `package.json`.
 - Requires prosemirror-go v0.2.1, which reads the `markSet` step an editor on prosemirror-transform 1.12.3 or later sends when it undoes a mark; on v0.1.0 the writer refused that commit.

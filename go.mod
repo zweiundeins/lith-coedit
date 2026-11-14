@@ -19,6 +19,3 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.60.1 // indirect
 )
-
-// LOCAL ONLY: remove once prosemirror-go v0.2.1 is tagged.
-replace github.com/zweiundeins/prosemirror-go => ../prosemirror-go-deps
